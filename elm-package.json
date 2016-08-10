@@ -1,0 +1,20 @@
+{
+    "version": "1.0.0",
+    "summary": "a lightweight graphics library, similar to Graphics.Collage",
+    "repository": "https://github.com/user/project.git",
+    "license": "BSD3",
+    "source-directories": [
+        "src",
+        "test"
+    ],
+    "exposed-modules": [
+        "Graphics.Render"
+    ],
+    "dependencies": {
+        "elm-lang/core": "4.0.0 <= v < 4.0.4",
+        "elm-lang/html": "1.1.0 <= v < 2.0.0",
+        "elm-lang/svg": "1.1.0 <= v < 2.0.0",
+        "jergason/elm-hash": "1.0.0 <= v < 2.0.0"
+    },
+    "elm-version": "0.17.0 <= v < 0.18.0"
+}
