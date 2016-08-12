@@ -200,7 +200,8 @@ type FillStyle
     = Solid Color
     | Texture String Float Float Float
 
-{-| A 2-tuple of `Float`s representing a 2D point.
+{-| A 2-tuple of `Float`s representing a 2D point. `(0,0)` represents
+a point in the middle of the viewport.
 -}
 type alias Point = (Float, Float)
 
@@ -558,61 +559,72 @@ the height and width of the SVG viewbox in pixels.
 -}
 svg : Float -> Float -> Form msg -> Html msg
 svg width height form =
-    Svg.svg
+    let x = width / 2
+        y = height / 2
+    in  Svg.svg
         [ Svg.height <| toString height
         , Svg.width  <| toString width
         , Svg.version "1.1"
-        ] <| renderSvg' height width form
+        ] <| snd <| renderSvg' width height (move x y form) 0
 
 
-renderSvg' : Float -> Float -> Form msg -> List (Svg msg)
-renderSvg' w h form =
+renderSvg' : Float -> Float -> Form msg -> Int -> (Int, List (Svg msg))
+renderSvg' w h form id =
     case form.form of
 
         FLine line style ->
             case line of
                     
-                    Polyline ps ->
-                        [ Svg.polyline
-                              ((Svg.points <| svgDecodePoints ps) :: attrs w h form) [ ] ]
+                Polyline ps ->
+                    ( id
+                    , [ Svg.polyline
+                           ((Svg.points <| svgDecodePoints ps) :: attrs w h form id) [ ] ])
 
         FShape shape style ->
             case shape of
 
                 Polygon ps ->
-                    svgEvalFill style.fill ++
-                    [ Svg.polygon
-                          ((Svg.points <| svgDecodePoints ps) :: attrs w h form) [ ] ]
-                        
+                    ( id + 1
+                    , svgEvalFill style.fill id ++
+                        [ Svg.polygon
+                              ((Svg.points <| svgDecodePoints ps) :: attrs w h form id) [ ] ])
+                    
                 Ellipse rx ry ->
-                    svgEvalFill style.fill ++
-                    [ Svg.ellipse
-                          (attrs w h form ++
-                               [ Svg.rx <| toString rx
-                               , Svg.ry <| toString ry
-                               ]) [ ] ]
+                    ( id + 1
+                    , svgEvalFill style.fill id ++
+                        [ Svg.ellipse
+                              (attrs w h form id ++
+                                   [ Svg.rx <| toString rx
+                                   , Svg.ry <| toString ry
+                                   ]) [ ] ])
 
         FText text style ->
-            [ Svg.text' (attrs w h form) [ Svg.text text ] ]
+            ( id, [ Svg.text' (attrs w h form id) [ Svg.text text ] ])
 
         FImage url width height ->
-            [ Svg.image
-                  (attrs w h form ++ 
-                       [ Svg.width <| toString width
-                       , Svg.height <| toString height
-                       , Svg.xlinkHref url
-                       ]) [ ] ]
+            ( id
+            , [ Svg.image
+                    (attrs w h form id ++ 
+                         [ Svg.width <| toString width
+                         , Svg.height <| toString height
+                         , Svg.xlinkHref url
+                         ]) [ ] ])
 
         FElem elem ->
-            [ Svg.foreignObject (attrs w h form) [ elem ] ]
+            (id, [ Svg.foreignObject (attrs w h form id) [ elem ] ])
 
         FGroup forms ->
-            [ Svg.g (attrs w h form)
-                  <| List.concat <| List.map (renderSvg' w h) forms ]
+            let go (i,rs) fs =
+                    case fs of
+                        [ ] -> (i,rs)
+                        (x::xs) -> let (i',rs') = renderSvg' w h x i
+                                   in  go (i + i', rs ++ rs') xs
+                (id',forms') = go (id,[]) forms
+            in  (id', [ Svg.g (attrs w h form id) <| forms' ])
+                 
 
-
-attrs : Float -> Float -> Form msg -> List (Attribute msg)
-attrs width height form =
+attrs : Float -> Float -> Form msg -> Int -> List (Attribute msg)
+attrs width height form id =
     case form.form of
 
         FLine line style ->
@@ -626,7 +638,7 @@ attrs width height form =
             ]
 
         FShape shape style ->
-            [ Svg.fill <| svgDecodeFill style.fill
+            [ Svg.fill <| svgDecodeFill style.fill id
             , Svg.fillOpacity <| svgDecodeFillAlpha style.fill
             , Svg.stroke <| svgDecodeColor style.border.color
             , Svg.strokeOpacity <| svgDecodeAlpha style.border.color
@@ -682,16 +694,16 @@ svgTransform :
         } ->
     String
 svgTransform height width obj =
-    let x = toString <| obj.x + width / 2
-        y = toString <| obj.y + height / 2
+    let x = toString obj.x
+        y = toString obj.y
         theta = toString <| obj.theta / 2 / pi * 360
         scale = toString obj.scale
     in String.concat
         [ "translate(",x,",",y,") rotate(",theta,") scale(",scale,")" ]
 
 
-svgEvalFill : FillStyle -> List (Svg msg)
-svgEvalFill fs =
+svgEvalFill : FillStyle -> Int -> List (Svg msg)
+svgEvalFill fs id =
     case fs of
 
         Texture url w h a ->
@@ -700,7 +712,7 @@ svgEvalFill fs =
                         [ Svg.width <| toString w
                         , Svg.height <| toString h
                         , Svg.patternUnits "userSpaceOnUse"
-                        , Svg.id <| toId fs
+                        , Svg.id <| "UUID" ++ toString id
                         ] [ Svg.image
                               [ Svg.width <| toString w
                               , Svg.height <| toString h
@@ -710,15 +722,15 @@ svgEvalFill fs =
         _ -> [ ]
 
             
-svgDecodeFill : FillStyle -> String
-svgDecodeFill fs =
+svgDecodeFill : FillStyle -> Int -> String
+svgDecodeFill fs id =
     case fs of
 
         Solid c -> 
             svgDecodeColor c
 
         _ ->
-            String.concat [ "url(#",toId fs,")" ]
+            String.concat [ "url(#UUID",toString id,")" ]
 
 
 svgDecodeFillAlpha : FillStyle -> String
@@ -741,16 +753,3 @@ svgDecodeAlpha : Color -> String
 svgDecodeAlpha c =
     let {alpha} = c |> Color.toRgb
     in  toString alpha
-        
-
-updateHash : Char -> Int -> Int
-updateHash c h =
-    Bitwise.shiftLeft h 5 + h + Char.toCode c
-
-
-toId : a -> String
-toId a =
-    "ID" ++ (
-    toString <|
-        String.foldl updateHash 5381
-        <| toString a)
