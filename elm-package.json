@@ -11,7 +11,7 @@
         "Graphics.Render"
     ],
     "dependencies": {
-        "elm-lang/core": "4.0.0 <= v < 4.0.5",
+        "elm-lang/core": "4.0.0 <= v < 5.0.0",
         "elm-lang/html": "1.1.0 <= v < 2.0.0",
         "elm-lang/svg": "1.1.0 <= v < 2.0.0",
         "jergason/elm-hash": "1.0.0 <= v < 2.0.0"
