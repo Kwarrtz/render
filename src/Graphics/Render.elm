@@ -1,32 +1,42 @@
 module Graphics.Render exposing
     ( Form
     , Shape, ShapeStyle
-    , FillStyle
+    , Texture
+    , solid, pattern, patternWithOpacity
+    , linearGradient, simpleLinearGradient, angledLinearGradient
     , Line, LineStyle
-    , LineCap(..)
-    , LineJoin(..)
+    , LineCap
+    , round, square, flat
+    , LineJoin
+    , smooth, sharp, bevel
     , TextStyle
+    , TextAlign
+    , left, center, right
     , Point
     , svg
     , html, group
-    , shape
+    , styledShape
     , polygon, rectangle
     , ellipse, circle
-    , solidFill, solidFillWithBorder
-    , textureFill, textureFillWithBorder
-    , line
-    , polyline, segment
-    , solid, dotted, dashed
+    , bordered, filled, filledAndBordered
+    , styledLine
+    , segments, segment
+    , solidLine, dottedLine, dashedLine
+    , styledText
     , text
-    , plain, bold, italic, underlined
+    , leftJustified, centered, rightJustified
+    , bold, italic, underlined
+    , fontColor, fontPattern, fontGradient, fontFamily
     , image
-    , position, angle, size, opacity
-    , move, rotate, scale
+    , position, angle, scale, opacity
+    , on
+    , onClick, onMouseDown, onMouseUp, onMouseOver, onMouseOut
+    , onFocusIn, onFocusOut
     )
 
-{-| This library provides a toolkit for rendering and manipulating 
+{-| This library provides a toolkit for rendering and manipulating
 graphics primitives such as lines, polygons, text, images, etc.
-It is intended primarily for projects that are too complex for 
+It is intended primarily for projects that are too complex for
 the manual manipulation of  an SVG or HTML5 canvas element, but too
 simple for a fully blown graphics engine such as WebGL (a motivating
 example would be a simple 2D game).
@@ -42,7 +52,7 @@ the only backend supported at present is SVG.
 @docs Shape, polygon, rectangle, ellipse, circle
 
 # Lines
-@docs Line, polyline, segment
+@docs Line, segment, segments
 
 # Images
 @docs image
@@ -53,184 +63,76 @@ the only backend supported at present is SVG.
 # Grouping
 @docs group
 
-# Turning Things into Forms
+# Turning Stuff Into Forms
 
 ## Shapes
-@docs solidFill, solidFillWithBorder, textureFill, textureFillWithBorder
+@docs filled, bordered, filledAndBordered
 
 ## Lines
-@docs solid, dashed, dotted
+@docs solidLine, dashedLine, dottedLine
 
 ## Text
-@docs plain, bold, italic, underlined
+@docs text, leftJustified, rightJustified, centered, bold, italic, underlined, fontColor, fontPattern, fontGradient, fontFamily
 
 ## HTML
 @docs html
 
 # Modifying Forms
-@docs position, angle, size, opacity, move, rotate, scale
+@docs position, angle, scale, opacity
+
+# Events
+
+## Mouse Events
+@docs onClick, onMouseDown, onMouseUp, onMouseOver, onMouseOut
+
+## Focus Events
+@docs onFocusIn, onFocusOut
+
+## Custom Events
+@docs on
 
 # Custom Styling
 
+@docs Texture, solid, pattern, patternWithOpacity, linearGradient, simpleLinearGradient, angledLinearGradient
+
 ## Shapes
-@docs shape, ShapeStyle, FillStyle
+@docs styledShape, ShapeStyle
 
 ## Lines
-@docs line, LineStyle, LineCap, LineJoin
+@docs styledLine, LineStyle, LineCap, round, flat, square, LineJoin, smooth, sharp, bevel
 
 ## Text
-@docs text, TextStyle
+@docs styledText, TextStyle, TextAlign, left, right, center
 -}
 
-import Svg exposing (Svg, Attribute)
-import Svg.Attributes as Svg
 import Html exposing (Html)
+import Color exposing (Color, Gradient, black)
+import Json.Decode as Json exposing (field)
 
-import Color exposing (Color, Gradient)
-import List
-import String
-import Bitwise
-import Char
-
-
-{-| Anything that can be rendered on the screen. A `Form` could be a 
-red circle, a line of text, or an arbitrary HTML element.
-
-    redCircle : Form
-    redCircle = circle 10 |> solidFill (rgb 255 0 0) |> position (-20,0)
-
-    blueCircle : Form
-    blueCircle = circle 10 |> solidFill (rgb 0 0 255)
-
-    circles : Form
-    circles = group [redCircle, blueCircle]
--}
-type alias Form a =
-    { x : Float
-    , y : Float
-    , theta : Float
-    , scale : Float
-    , alpha : Float
-    , form : BasicForm a
-    }
+import Graphics.Render.Core as Core
+import Graphics.Render.Svg as Svg
 
 
-type BasicForm msg
-    = FLine Line LineStyle
-    | FShape Shape ShapeStyle
-    | FText String TextStyle
-    | FImage String Float Float
-    | FGroup (List (Form msg))
-    | FElem (Html msg)
 
 
-{-| A segment of a line or curve. Only describes the shape of the line.
-Position, color, width, etc. are all specified later.
--}
-type Line
-    = Polyline (List Point)
+--------------------------- BASIC -------------------------
 
 
-{-| A polygon or an ellipse. Only describes the size and shape of the figure.
-Position, color, width, etc. are all specified later.
--}
-type Shape
-    = Polygon (List Point)
-    | Ellipse Float Float
-
-
-{-| Speficies the styling (color, width, dashing, etc.) of a line.
-
-    -- defines a red, dashed line with a width of 5px
-    { color = rgb 255 20 20
-    , width = 5
-    , cap = Flat
-    , join = Sharp
-    , dashing = [8,4]
-    , dashOffset = 0
-    }
--}
-type alias LineStyle =
-    { color : Color
-    , width : Float
-    , cap : LineCap
-    , join : LineJoin
-    , dashing : List Int
-    , dashOffset : Int
-    }
-
-
-{-| Specifies the styling (color, border, etc.) of a shape.
--}
-type alias ShapeStyle =
-    { fill : FillStyle
-    , border : LineStyle
-    }
-
-
-{-| Specifies the styling (color, font, weight, etc.) of text
--}
-type alias TextStyle =
-    { color : Color
-    , fontSize : Int
-    , fontFamily : String
-    , italic : Bool
-    , bold : Bool
-    , underlined : Bool
-    }
-
-
-{-| Describes the cap style of a line. `Flat` capped lines have
-no endings, `Square` capped lines have flat endings that extend
-slightly past the end of the line, and `Round` capped lines have
-hemispherical endings.
--}
-type LineCap = Round | Square | Flat
-
-
-{-| Describes the join style of a line. 
--}
-type LineJoin = Smooth | Sharp | Bevel
-
-
-{-| Describes the fill texture of a shape. It can be a solid color,
-gradient, or tiled texture.
--}
-type FillStyle
-    = Solid Color
-    | Texture String Float Float Float
-
-{-| A 2-tuple of `Float`s representing a 2D point. `(0,0)` represents
-a point in the middle of the viewport.
--}
-type alias Point = (Float, Float)
-
-    
 form : BasicForm msg -> Form msg
-form bForm =
-    { x = 0
-    , y = 0
-    , theta = 0
-    , scale = 1
-    , alpha = 1.0
-    , form = bForm
-    }
-
+form bForm = Core.Form 0 0 0 1 1 bForm [ ]
 
 {-| Creates a `Form` from an arbitrary `Html` element. The
 resulting form is subject to all of the regular manipulations.
 Note that if you are compiling to SVG, then this functionality
-is not supported in Internet Explorer.
--}
+is not supported in Internet Explorer. -}
 html : Html msg -> Form msg
-html elem = form <| FElem elem
+html elem = form <| Core.FElem elem
 
 
 {-| Takes a list of `Form`s and combines them into a single
-`Form`.
--}
+`Form`. -}
 group : List (Form msg) -> Form msg
-group forms = form <| FGroup forms
+group forms = form <| Core.FGroup forms
 
 
 
@@ -238,7 +140,7 @@ group forms = form <| FGroup forms
 
 
 
-              
+
 
 
 
@@ -246,35 +148,24 @@ group forms = form <| FGroup forms
 ------------------------ SHAPES ------------------------
 
 
-{-| The `*Fill` and `*FillWithBorder` functions
-allow you to add styling to your shapes and conver them
-into forms, but sometimes those functions don't offer 
-enough flexibility. What if you want a dashed border
-instead of a solid one? Or how about a beveled join on
-the border? For this you must turn to the shape function.
-The `shape` function takes a `Shape` and *any* `ShapeStyle`
-and converts them into a `Form`, giving you total control
-over the styling of the shape.
--}
-shape : Shape -> ShapeStyle -> Form msg
-shape shape style = form <| FShape shape style
+{-| Takes a `Shape` and *any* `ShapeStyle` and converts them into
+a `Form`, giving you total control over the styling of the shape. -}
+styledShape : Shape -> ShapeStyle -> Form msg
+styledShape shape = form << Core.FShape shape
 
 
-{-| `polygon points` is a polygon bounded by `points`.
--}
+{-| `polygon points` is a polygon bounded by `points`. -}
 polygon : List Point -> Shape
-polygon = Polygon
+polygon = Core.Polygon
 
 
-{-| An ellipse. The arugments specify the vertical and horizontal radii,
-respectively.
--}
+{-| An ellipse. The arugments specify the horizontal and vertical radii,
+respectively. -}
 ellipse : Float -> Float -> Shape
-ellipse = Ellipse
+ellipse = Core.Ellipse
 
 
-{-| A rectangle. Arguments specify width and height, respectively.
--}
+{-| A rectangle. The arguments specify width and height, respectively. -}
 rectangle : Float -> Float -> Shape
 rectangle w h =
     polygon
@@ -284,48 +175,32 @@ rectangle w h =
     , (0 - w/2, 0 - h/2)]
 
 
-{-| A circle.
--}
+{-| A circle. The argument specifies the radius. -}
 circle : Float -> Shape
 circle r = ellipse r r
 
-
-{-| Fills a shape with a solid color.
--}
-solidFill : Color -> Shape -> Form msg
-solidFill color s =
-    solidFillWithBorder color 0 color s
-
-
-{-| Fills a shape with a solid color and borders it with a solid line.
-Arguments specify fill color, border width and border color, respectively.
--}
-solidFillWithBorder : Color -> Float -> Color -> Shape -> Form msg
-solidFillWithBorder fillColor borderWidth borderColor s =
-    shape s
-    { fill = Solid fillColor
-    , border = solidStyle borderColor borderWidth
-    }
-
-    
-{-| Tiles a shape with a repeated image. The arguments specify the image width,
-height and url respectively.
--}
-textureFill : Float -> Float -> String -> Shape -> Form msg
-textureFill width height url s =
-    textureFillWithBorder width height url 0 (Color.rgb 0 0 0) s
+{-| Fills in a shape, making it into a 'Form'. The argument
+specifies the texture of the fill. The border is left transparent. -}
+filled : Texture -> Shape -> Form msg
+filled texture shape =
+    filledAndBordered texture 0 transparent shape
 
 
-{-| Tiles a shape with a repeated image and borders it with a solid line. The
-arguments specify the url width, height and url, followed by the border width and
-color.
--}
-textureFillWithBorder : Float -> Float -> String -> Float -> Color -> Shape -> Form msg
-textureFillWithBorder width height url borderWidth borderColor s =
-    shape s
-    { fill = Texture url width height 1
-    , border = solidStyle borderColor borderWidth
-    }
+{-| Adds a border to a shape, making it into a 'Form'. The arguments
+specify the width and texture of the border, respectiverly. The fill is
+left transparent. -}
+bordered : Float -> Texture -> Shape -> Form msg
+bordered width texture shape =
+    filledAndBordered transparent width texture shape
+
+
+{-| Adds a fill and border to a 'Shape', making it into a 'Form'. The
+first argument specifies the fill texture, and the second two arguments
+specify the border width and texture, respectively. -}
+filledAndBordered : Texture -> Float -> Texture -> Shape -> Form msg
+filledAndBordered fill width border shape =
+    form <| Core.FShape shape <| { fill = fill, border = lineStyle border width }
+
 
 
 
@@ -340,62 +215,54 @@ textureFillWithBorder width height url borderWidth borderColor s =
 -------------------- LINES --------------------
 
 
-{-| Similar to the shape function, line allows you
-to apply any LineStyle to a Line when converting it
-to a form, giving you more fine grained control than
-other similar functions.
--}
-line : Line -> LineStyle -> Form msg
-line line style = form <| FLine line style
+{-| Similar to the `styledShape` function, `styledLine`
+allows you to apply any LineStyle to a Line when converting
+it to a form, giving you more fine grained control than
+other similar functions. -}
+styledLine : Line -> LineStyle -> Form msg
+styledLine line style = form <| Core.FLine line style
 
 
 {-| `polyline points` is a polyline with vertices
 at `points`. (A polyline is a collection of connected
-line segments. It can be thought of as drawing a 
-"connect-the-dots" line through a list of points.)
--}
-polyline : List Point -> Line
-polyline = Polyline
+line segments. It can be thought of as drawing a
+"connect-the-dots" line through a list of points.) -}
+segments : List Point -> Line
+segments = Core.Polyline
 
 
 {-| `segment (x1,y1) (x2,y2)` is a line segment with
-endpoints at `(x1,y1)` and `(x2,y2)`.
--}
+endpoints at `(x1,y1)` and `(x2,y2)`. -}
 segment : Point -> Point -> Line
-segment a b = polyline [a,b]
+segment a b = segments [a,b]
 
 
-solidStyle : Color -> Float -> LineStyle
-solidStyle color width =
-    { color = color
-    , width = width
-    , cap = Flat
-    , join = Sharp
-    , dashing = []
-    , dashOffset = 0
-    }
-              
-              
-{-| `solid width color line` is a solid line of width `width` 
-and color `color` whose path is described by `line`.
--}
-solid : Float -> Color -> Line -> Form msg
-solid width color l =
-    line l <| solidStyle color width
+lineStyle : Texture -> Float -> LineStyle
+lineStyle stroke width =
+    Core.LineStyle stroke width flat sharp [] 0
 
-    
-{-| The same as `solid`, except the line is dashed.
--}
-dashed : Float -> Color -> Line -> Form msg
-dashed width color l =
-    let ls = solidStyle color width in line l { ls | dashing = [8,4] }
 
-    
-{-| The same as `solid`, except the line is dotted.
--}
-dotted : Float -> Color -> Line -> Form msg
-dotted width color l =
-    let ls = solidStyle color width in line l { ls | dashing = [2,2] }
+{-| Creates a Form representing a solid line from a
+'Line' object. The first argument specifies the line
+width and the second argument specifies the texture
+to use for the line stroke. -}
+solidLine : Float -> Texture -> Line -> Form msg
+solidLine width stroke line =
+    styledLine line <| lineStyle stroke width
+
+
+{-| The same as `solidLine`, except the line is dashed. -}
+dashedLine : Float -> Texture -> Line -> Form msg
+dashedLine width stroke line =
+    let ls = lineStyle stroke width
+    in styledLine line { ls | dashing = [8,4] }
+
+
+{-| The same as `solidLine`, except the line is dotted. -}
+dottedLine : Float -> Texture -> Line -> Form msg
+dottedLine width stroke line =
+    let ls = lineStyle stroke width
+    in styledLine line { ls | dashing = [2,2] }
 
 
 
@@ -411,57 +278,83 @@ dotted width color l =
 --------------------- TEXT ---------------------
 
 
-{-| Similar to `shape` and `line`, the `text` function 
+{-| Similar to `styledShape`, the `styledText` function
 will take a string and any `TextStyle` and convert them
-into a form. It is useful for when functions like `plain`
-and `bold` don't offer enough flexibility and you need
-more control over the styling of your text.
--}
-text : String -> TextStyle -> Form msg
-text text style = form <| FText text style
-
-       
-plainStyle : Int -> String -> Color -> TextStyle
-plainStyle size family color =
-    { color = color
-    , fontSize = size
-    , fontFamily = family
-    , bold = False
-    , italic = False
-    , underlined = False
-    }
+into a form. It is useful for when you need more control
+over the styling of your text. -}
+styledText : String -> TextStyle -> Form msg
+styledText text style =
+    let style_ =
+            Core.TextStyle_
+                style.stroke style.size style.font
+                style.bold style.italic style.underlined
+    in  form <| Core.FText (Core.Text text style_) style.align
 
 
-{-| A line of plain text. The arguments specify the text's
-font size, family and color respectively.
--}
-plain : Int -> String -> Color -> String -> Form msg
-plain size family color t =
-    text t <| plainStyle size family color
+{-| Left justified text. -}
+leftJustified : Text -> Form msg
+leftJustified t = form <| Core.FText t left
 
-        
-{-| A line of bold text. The arguments specify the text's
-font size, family and color respectively.
--}
-bold : Int -> String -> Color -> String -> Form msg
-bold size family color t =
-    let ts = plainStyle size family color in text t { ts | bold = True }
 
-             
-{-| A line of italic text. The arguments specify the text's
-font size, family and color respectively.
--}
-italic : Int -> String -> Color -> String -> Form msg
-italic size family color t =
-    let ts = plainStyle size family color in text t { ts | italic = True }
+{-| Centered text. -}
+centered : Text -> Form msg
+centered t = form <| Core.FText t center
 
-             
-{-| A line of underlined text. The arguments specify the text's
-font size, family and color respectively.
--}
-underlined : Int -> String -> Color -> String -> Form msg
-underlined size family color t =
-    let ts = plainStyle size family color in text t { ts | underlined = True }
+
+{-| Right justified text. -}
+rightJustified : Text -> Form msg
+rightJustified t = form <| Core.FText t right
+
+
+{-| Creates a line of text. The first argument specifies the font
+size (in pts). Font defaults to black sans-serif. -}
+text : Int -> String -> Text
+text size t =
+    Core.Text t <| Core.TextStyle_
+        (solid black) size "sans-serif"
+        False False False
+
+
+{-| Makes `Text` bold. -}
+bold : Text -> Text
+bold (Core.Text t style) =
+    Core.Text t { style | bold = True }
+
+
+{-| Italicizes `Text`. -}
+italic : Text -> Text
+italic (Core.Text t style) =
+    Core.Text t { style | italic = True }
+
+
+{-| Underlines `Text`. -}
+underlined : Text -> Text
+underlined (Core.Text t style) =
+    Core.Text t { style | underlined = True }
+
+
+{-| Gives a `Text` element a solid color. -}
+fontColor : Color -> Text -> Text
+fontColor color (Core.Text t style) =
+    Core.Text t { style | stroke = solid color }
+
+
+{-| Gives a `Text` element a tiled pattern. -}
+fontPattern : Float -> Float -> String -> Text -> Text
+fontPattern w h url (Core.Text t style) =
+    Core.Text t { style | stroke = pattern w h url }
+
+
+{-| Gives a `Text` element a linear gradient. -}
+fontGradient : List Color -> Text -> Text
+fontGradient stops (Core.Text t style) =
+    Core.Text t { style | stroke = simpleLinearGradient stops }
+
+
+{-| Sets the font family of `Text`. -}
+fontFamily : String -> Text -> Text
+fontFamily f (Core.Text t style) =
+    Core.Text t { style | font = f }
 
 
 
@@ -476,10 +369,9 @@ underlined size family color t =
 
 ------------------- IMAGES ----------------------
 
-{-| An image. The arguments specify the image's width, height and url.
--}
+{-| An image. The arguments specify the image's width, height and url. -}
 image : Float -> Float -> String -> Form msg
-image w h url = form <| FImage url w h
+image w h url = form <| Core.FImage url w h
 
 
 
@@ -504,37 +396,16 @@ position : Point -> Form msg -> Form msg
 position (x,y) form = { form | x = x, y = y }
 
 
-{-| Sets the angle of a `Form`. The argument is in radians.
--}
+{-| Sets the angle of a `Form`. The argument is in radians. -}
 angle : Float -> Form msg -> Form msg
 angle theta form = { form | theta = theta }
 
 
-{-| Sets the scale of a `Form`. 
--}
-size : Float -> Form msg -> Form msg
-size scale form = { form | scale = scale }
-
-
-{-| Modifies the position of a `Form`.
--}
-move : Float -> Float -> Form msg -> Form msg
-move x y form = { form | x = form.x + x, y = form.y + y }
-
-
-{-| Modifies the angle of a `Form`. 
--}
-rotate : Float -> Form msg -> Form msg
-rotate theta form = { form | theta = form.theta + theta }
-
-{-| Modifies the scale of a `Form`.
--}
+{-| Sets the scale of a `Form`.  -}
 scale : Float -> Form msg -> Form msg
-scale scale form = { form | scale = form.scale * scale }
+scale scale form = { form | scale = scale }
 
-
-{-| Sets the opacity of a `Form`.
--}
+{-| Sets the opacity of a `Form`. -}
 opacity : Float -> Form msg -> Form msg
 opacity alpha form = { form | alpha = alpha }
 
@@ -544,212 +415,250 @@ opacity alpha form = { form | alpha = alpha }
 
 
 
-    
 
 
 
-    
 
------------------------ SVG RENDERING --------------------
+
+
+
+------------------- EVENTS ------------------------
+
+
+{-| Adds a custom event handler to a `Form`. The first
+argument specifies the event name (as you would give it
+to JavaScript's `addEventListener`). The second argument
+will be used to decode the JSON response from the event
+listener. If the decoder succeeds, the resulting message
+will be passed along to your `update` function.
+
+    onClick : msg -> Form msg -> Form msg
+    onClick msg =
+       on "click" (Json.succeed msg)
+-}
+on : String -> Json.Decoder msg -> Form msg -> Form msg
+on event decoder f = { f | handlers = (event, decoder) :: f.handlers }
+
+
+simpleOn : String -> msg -> Form msg -> Form msg
+simpleOn event = on event << Json.succeed
+
+
+mouseOn : String -> (Point -> msg) -> Form msg -> Form msg
+mouseOn event msg =
+    on event <|
+        Json.map msg <| Json.map2
+            (\x y -> (x, y))
+            (field "clientX" Json.float)
+            (field "clientY" Json.float)
+
+
+{-|-}
+onClick : msg -> Form msg -> Form msg
+onClick = simpleOn "click"
+
+
+{-|-}
+onMouseDown : (Point -> msg) -> Form msg -> Form msg
+onMouseDown = mouseOn "mousedown"
+
+
+{-|-}
+onMouseUp : (Point -> msg) -> Form msg -> Form msg
+onMouseUp = mouseOn "mouseup"
+
+
+{-|-}
+onMouseMove : (Point -> msg) -> Form msg -> Form msg
+onMouseMove = mouseOn "mousemove"
+
+
+{-|-}
+onMouseOver : (Point -> msg) -> Form msg -> Form msg
+onMouseOver = mouseOn "mouseover"
+
+
+{-|-}
+onMouseOut : (Point -> msg) -> Form msg -> Form msg
+onMouseOut = mouseOn "mouseout"
+
+
+{-|-}
+onFocusIn : msg -> Form msg -> Form msg
+onFocusIn = simpleOn "focusin"
+
+
+{-|-}
+onFocusOut : msg -> Form msg -> Form msg
+onFocusOut = simpleOn "focusout"
+
+
+
+
+
+
+
+
+
+
+
+
+
+----------------------- RENDERING --------------------
 
 
 {-| Takes a `Form` and renders it to usable HTML, in this case
 in the form of an SVG element. The first two arguments determine
-the height and width of the SVG viewbox in pixels.
+the height and width of the SVG viewbox in pixels. -}
+svg : Float -> Float -> Float -> Float -> Core.Form msg -> Html msg
+svg = Svg.svg
+
+
+
+
+
+
+
+
+
+
+
+---------------------------- CORE --------------------------
+
+
+{-| Anything that can be rendered on the screen. A `Form` could be a
+red circle, a line of text, or an arbitrary HTML element.
+
+    redCircle : Form
+    redCircle = circle 10 |> solidFill (rgb 255 0 0) |> position (-20,0)
+
+    blueCircle : Form
+    blueCircle = circle 10 |> solidFill (rgb 0 0 255)
+
+    circles : Form
+    circles = group [redCircle, blueCircle]
 -}
-svg : Float -> Float -> Form msg -> Html msg
-svg width height form =
-    let x = width / 2
-        y = height / 2
-    in  Svg.svg
-        [ Svg.height <| toString height
-        , Svg.width  <| toString width
-        , Svg.version "1.1"
-        ] <| snd <| renderSvg' width height (move x y form) 0
+type alias Form msg = Core.Form msg
 
+type alias BasicForm msg = Core.BasicForm msg
 
-renderSvg' : Float -> Float -> Form msg -> Int -> (Int, List (Svg msg))
-renderSvg' w h form id =
-    case form.form of
+{-| A segment of a line or curve. Only describes the shape of the line.
+Position, color, width, etc. are all specified later. -}
+type alias Line = Core.Line
 
-        FLine line style ->
-            case line of
-                    
-                Polyline ps ->
-                    ( id
-                    , [ Svg.polyline
-                           ((Svg.points <| svgDecodePoints ps) :: attrs w h form id) [ ] ])
+{-| A polygon or an ellipse. Only describes the size and shape of the figure.
+Position, color, width, etc. are all specified later. -}
+type alias Shape = Core.Shape
 
-        FShape shape style ->
-            case shape of
+{-| A line or block of text. -}
+type alias Text = Core.Text
 
-                Polygon ps ->
-                    ( id + 1
-                    , svgEvalFill style.fill id ++
-                        [ Svg.polygon
-                              ((Svg.points <| svgDecodePoints ps) :: attrs w h form id) [ ] ])
-                    
-                Ellipse rx ry ->
-                    ( id + 1
-                    , svgEvalFill style.fill id ++
-                        [ Svg.ellipse
-                              (attrs w h form id ++
-                                   [ Svg.rx <| toString rx
-                                   , Svg.ry <| toString ry
-                                   ]) [ ] ])
+{-| Speficies the styling (color, width, dashing, etc.) of a line.
 
-        FText text style ->
-            ( id, [ Svg.text' (attrs w h form id) [ Svg.text text ] ])
+    -- defines a red, dashed line with a width of 5px
+    { color = rgb 255 20 20
+    , width = 5
+    , cap = Flat
+    , join = Sharp
+    , dashing = [8,4]
+    , dashOffset = 0
+    }
+-}
+type alias LineStyle = Core.LineStyle
 
-        FImage url width height ->
-            ( id
-            , [ Svg.image
-                    (attrs w h form id ++ 
-                         [ Svg.width <| toString width
-                         , Svg.height <| toString height
-                         , Svg.xlinkHref url
-                         ]) [ ] ])
+{-| Specifies the styling (color, border, etc.) of a shape. -}
+type alias ShapeStyle = Core.ShapeStyle
 
-        FElem elem ->
-            (id, [ Svg.foreignObject (attrs w h form id) [ elem ] ])
+{-| Specifies the styling (color, font, weight, etc.) of text -}
+type alias TextStyle = Core.TextStyle
 
-        FGroup forms ->
-            let go (i,rs) fs =
-                    case fs of
-                        [ ] -> (i,rs)
-                        (x::xs) -> let (i',rs') = renderSvg' w h x i
-                                   in  go (i + i', rs ++ rs') xs
-                (id',forms') = go (id,[]) forms
-            in  (id', [ Svg.g (attrs w h form id) <| forms' ])
-                 
+{-| Describes the cap style of a line. `Flat` capped lines have
+no endings, `Square` capped lines have flat endings that extend
+slightly past the end of the line, and `Round` capped lines have
+hemispherical endings. -}
+type alias LineCap = Core.LineCap
 
-attrs : Float -> Float -> Form msg -> Int -> List (Attribute msg)
-attrs width height form id =
-    case form.form of
+{-| Describes the join style of a line.  -}
+type alias LineJoin = Core.LineJoin
 
-        FLine line style ->
-            [ Svg.stroke <| svgDecodeColor style.color
-            , Svg.strokeOpacity <| svgDecodeAlpha style.color
-            , Svg.strokeWidth <| toString style.width
-            , Svg.strokeLinecap <| svgDecodeCap style.cap
-            , Svg.strokeLinejoin <| svgDecodeJoin style.join
-            , Svg.opacity <| toString form.alpha
-            , Svg.transform <| svgTransform height width form
-            ]
+{-| Describes the texture of a shape or line. It can be a solid color,
+gradient, or tiled texture. -}
+type alias Texture = Core.Texture
 
-        FShape shape style ->
-            [ Svg.fill <| svgDecodeFill style.fill id
-            , Svg.fillOpacity <| svgDecodeFillAlpha style.fill
-            , Svg.stroke <| svgDecodeColor style.border.color
-            , Svg.strokeOpacity <| svgDecodeAlpha style.border.color
-            , Svg.strokeWidth <| toString style.border.width
-            , Svg.strokeLinecap <| svgDecodeCap style.border.cap
-            , Svg.strokeLinejoin <| svgDecodeJoin style.border.join
-            , Svg.opacity <| toString form.alpha
-            , Svg.transform <| svgTransform height width form
-            ]
+{-| Describes the alignment (justification) of a text element. -}
+type alias TextAlign = Core.TextAlign
 
-        FText text style ->       
-            [ Svg.fill <| svgDecodeColor style.color
-            , Svg.fontFamily style.fontFamily
-            , Svg.fontSize <| toString style.fontSize
-            , Svg.fontWeight <| if style.bold then "bold" else "normal"
-            , Svg.fontStyle <| if style.italic then "italic" else "normal"
-            , Svg.textDecoration <| if style.underlined then "underline" else "none"
-            , Svg.transform <| svgTransform height width form
-            ]
+{-| A 2-tuple of `Float`s representing a 2D point. `(0,0)` represents
+a point in the center of the viewport. -}
+type alias Point = (Float, Float)
 
-        _ -> [ Svg.transform <| svgTransform height width form ]
-                
-                        
-svgDecodeCap : LineCap -> String
-svgDecodeCap cap =
-    case cap of
-        Round -> "round"
-        Square -> "square"
-        Flat -> "butt"
+{-| Hemispherical linecap -}
+round : LineCap
+round = Core.Round
 
-                    
-svgDecodeJoin : LineJoin -> String
-svgDecodeJoin join =
-    case join of
-        Smooth -> "round"
-        Sharp -> "milter"
-        Bevel -> "bevel"
+{-| Flat linecap extending slightly past the end of the line -}
+square : LineCap
+square = Core.Square
 
-                
-svgDecodePoints : List Point -> String
-svgDecodePoints ps =
-    ps |> List.map (\ (x,y) -> [toString x, toString y]) |> List.concat |> String.join " "
+{-| Flat linecap. -}
+flat : LineCap
+flat = Core.Flat
 
-        
-svgTransform :
-    Float ->
-    Float ->
-        { record
-            | x : Float
-            , y : Float
-            , theta : Float
-            , scale : Float
-        } ->
-    String
-svgTransform height width obj =
-    let x = toString obj.x
-        y = toString obj.y
-        theta = toString <| obj.theta / 2 / pi * 360
-        scale = toString obj.scale
-    in String.concat
-        [ "translate(",x,",",y,") rotate(",theta,") scale(",scale,")" ]
+{-| Smooth (rounded) linejoin -}
+smooth : LineJoin
+smooth = Core.Smooth
 
+{-| Sharp linejoin -}
+sharp : LineJoin
+sharp = Core.Sharp
 
-svgEvalFill : FillStyle -> Int -> List (Svg msg)
-svgEvalFill fs id =
-    case fs of
+{-| Beveled (clipped) linejoin -}
+bevel : LineJoin
+bevel = Core.Bevel
 
-        Texture url w h a ->
-            [ Svg.defs [ ]
-                  [ Svg.pattern
-                        [ Svg.width <| toString w
-                        , Svg.height <| toString h
-                        , Svg.patternUnits "userSpaceOnUse"
-                        , Svg.id <| "UUID" ++ toString id
-                        ] [ Svg.image
-                              [ Svg.width <| toString w
-                              , Svg.height <| toString h
-                              , Svg.xlinkHref url
-                              ] [ ] ] ] ]
+{-| Center justification -}
+center : TextAlign
+center = Core.Center
 
-        _ -> [ ]
+{-| Left justification -}
+left : TextAlign
+left = Core.Left
 
-            
-svgDecodeFill : FillStyle -> Int -> String
-svgDecodeFill fs id =
-    case fs of
+{-| Right justification -}
+right : TextAlign
+right = Core.Right
 
-        Solid c -> 
-            svgDecodeColor c
+{-| Solid color fill -}
+solid : Color -> Texture
+solid = Core.Solid
 
-        _ ->
-            String.concat [ "url(#UUID",toString id,")" ]
+transparent : Texture
+transparent = Core.None
 
+{-| Tiled texture fill. Arguments determine the width, height and
+url of the image. -}
+pattern : Float -> Float -> String -> Texture
+pattern w h url = patternWithOpacity w h url 1
 
-svgDecodeFillAlpha : FillStyle -> String
-svgDecodeFillAlpha fs =
-    case fs of
-        Solid c -> svgDecodeAlpha c
-        Texture _ _ _ a -> toString a
-        
+{-| Tiled image fill with opacity. Arguments determine the width, height,
+url and opacity of the image. -}
+patternWithOpacity : Float -> Float -> String -> Float -> Texture
+patternWithOpacity = Core.Pattern
 
-svgDecodeColor : Color -> String
-svgDecodeColor c =
-    let {red,green,blue} = c |> Color.toRgb
-        r = toString red
-        g = toString green
-        b = toString blue
-    in  String.concat [ "rgb(",r,",",g,",",b,")" ]
+{-| Linear color gradient from left to right. The argument specifies the
+position and color of each of the stops (poxitions are between 0 and 1,
+inclusive). -}
+linearGradient : List (Float, Color) -> Texture
+linearGradient = angledLinearGradient 0
 
+{-| Simpler version of `linerGradient`. Only the color of the stops needs to
+be specified. They are assumed to be equally spaced. -}
+simpleLinearGradient : List Color -> Texture
+simpleLinearGradient colors =
+    linearGradient <| List.indexedMap
+        (\i x -> (toFloat i / (toFloat <| List.length colors - 1), x)) colors
 
-svgDecodeAlpha : Color -> String
-svgDecodeAlpha c =
-    let {alpha} = c |> Color.toRgb
-    in  toString alpha
+{-| Same as `linearGradient`, except the angle (in radians) of the gradient
+is also specified -}
+angledLinearGradient : Float -> List (Float, Color) -> Texture
+angledLinearGradient = Core.Linear
