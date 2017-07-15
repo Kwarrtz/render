@@ -31,7 +31,7 @@ The following Elm code draws a blue ellipse with a black border at position (100
         |> filledAndBordered (solid <| rgb 0 0 255)
                            5 (solid <| rgb 0 0 0)
         |> position (100,100)
-        |> svg 500 500
+        |> svg 0 0 500 500
 
 ## TODO
 
